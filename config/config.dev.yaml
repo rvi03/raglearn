@@ -1,0 +1,10 @@
+# Local development overlay: Ollama on localhost, verbose logging.
+# Service URLs are inherited from config.yaml (localhost) and overridden by
+# RAGLEARN_* env vars when running under Docker Compose.
+
+env: dev
+log_level: DEBUG
+
+adapters:
+  llm_backend: { active: ollama, available: [ollama, vllm, tgi] }
+  cost_model: { active: local, available: [local, serverless, self_host] }

@@ -1,0 +1,104 @@
+# raglearn local stack. `make up` builds and starts it.
+# DuckDB is embedded (a file on the api volume), so it is not a service here.
+
+name: raglearn
+
+services:
+  raglearn-ollama:
+    image: ollama/ollama:latest
+    container_name: raglearn-ollama
+    ports: ["11434:11434"]
+    volumes: [ollama-data:/root/.ollama]
+    networks: [raglearn-net]
+    restart: unless-stopped
+
+  raglearn-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: raglearn-qdrant
+    ports: ["6333:6333", "6334:6334"]
+    volumes: [qdrant-data:/qdrant/storage]
+    networks: [raglearn-net]
+    restart: unless-stopped
+
+  raglearn-postgres:
+    image: postgres:16-alpine
+    container_name: raglearn-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-raglearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-raglearn}
+      POSTGRES_DB: ${POSTGRES_DB:-raglearn}
+    ports: ["5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [raglearn-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-raglearn}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  raglearn-redis:
+    image: redis:7-alpine
+    container_name: raglearn-redis
+    ports: ["6379:6379"]
+    volumes: [redis-data:/data]
+    networks: [raglearn-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  raglearn-minio:
+    image: minio/minio:latest
+    container_name: raglearn-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-raglearn}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-raglearn-secret}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [minio-data:/data]
+    networks: [raglearn-net]
+    restart: unless-stopped
+
+  raglearn-api:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: raglearn-api
+    environment:
+      RAGLEARN_ENV: ${RAGLEARN_ENV:-dev}
+      RAGLEARN_CONFIG_DIR: /app/config
+      RAGLEARN_QDRANT_URL: http://raglearn-qdrant:6333
+      RAGLEARN_POSTGRES_DSN: postgresql://${POSTGRES_USER:-raglearn}:${POSTGRES_PASSWORD:-raglearn}@raglearn-postgres:5432/${POSTGRES_DB:-raglearn}
+      RAGLEARN_REDIS_URL: redis://raglearn-redis:6379/0
+      RAGLEARN_OLLAMA_URL: http://raglearn-ollama:11434
+      RAGLEARN_MINIO_ENDPOINT: http://raglearn-minio:9000
+    ports: ["8000:8000"]
+    volumes: [duckdb-data:/app/data]
+    depends_on:
+      raglearn-postgres: {condition: service_healthy}
+      raglearn-redis: {condition: service_healthy}
+      raglearn-qdrant: {condition: service_started}
+      raglearn-ollama: {condition: service_started}
+      raglearn-minio: {condition: service_started}
+    networks: [raglearn-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  ollama-data: {}
+  qdrant-data: {}
+  postgres-data: {}
+  redis-data: {}
+  minio-data: {}
+  duckdb-data: {}
+
+networks:
+  raglearn-net:
+    driver: bridge

@@ -1,0 +1,24 @@
+# Local docs (PRD, design notes — kept out of version control)
+.docs/
+
+# JetBrains IDE
+.idea/
+
+# Claude working rules (kept local)
+CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Env / secrets
+.env
+
+# Local data (DuckDB files, downloaded filings, page images)
+/data/
+

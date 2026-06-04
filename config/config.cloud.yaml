@@ -1,0 +1,10 @@
+# Cloud overlay: GPU serving via vLLM.
+# Only the LLM backend and cost model differ from dev; the rest of the stack and
+# all service URLs come from config.yaml + RAGLEARN_* env vars.
+
+env: cloud
+log_level: INFO
+
+adapters:
+  llm_backend: { active: vllm, available: [ollama, vllm, tgi] }
+  cost_model: { active: self_host, available: [local, serverless, self_host] }

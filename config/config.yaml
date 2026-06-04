@@ -1,0 +1,34 @@
+# Base configuration. Overlaid by config.<env>.yaml, then RAGLEARN_* env vars.
+# `adapters` is the capability matrix: `active` is the selected adapter;
+# `available` lists declared alternatives. An adapter is reported as implemented
+# only when a class is registered for it.
+
+log_level: INFO
+
+services:
+  qdrant_url: http://localhost:6333
+  postgres_dsn: postgresql://raglearn:raglearn@localhost:5432/raglearn
+  redis_url: redis://localhost:6379/0
+  ollama_url: http://localhost:11434
+  minio_endpoint: http://localhost:9000
+
+adapters:
+  connector:       { active: upload,            available: [edgar, upload, data_gov_in] }
+  metadata:        { active: edgar_api,         available: [edgar_api, user_tag, llm_classify, rules] }
+  intake:          { active: content_hash,      available: [content_hash] }
+  xbrl_extract:    { active: edgartools,         available: [edgartools, arelle] }
+  parser:          { active: docling,            available: [docling, pypdfium2, opendataloader] }
+  chunker:         { active: structure_aware,   available: [structure_aware, semantic, fixed] }
+  embedder:        { active: bge_m3,            available: [bge_m3, e5, nomic, fin_e5] }
+  vector_store:    { active: qdrant,            available: [qdrant, weaviate, pgvector] }
+  retriever:       { active: hybrid,            available: [hybrid, dense, sparse] }
+  reranker:        { active: bge_reranker,      available: [bge_reranker, jina, none] }
+  fusion:          { active: rrf_cross_encoder, available: [rrf_cross_encoder, weighted, llm_merge] }
+  query_transform: { active: rewrite,           available: [rewrite, decompose, hyde] }
+  router:          { active: llm_classify,      available: [llm_classify, rules, embedding_classifier] }
+  structured_qa:   { active: metric_registry,   available: [metric_registry, text_to_sql, table_qa] }
+  harness:         { active: citation_verify,   available: [citation_verify, self_consistency, reflection, judge_gate, numeric_verifier] }
+  llm_backend:     { active: ollama,            available: [ollama, vllm, tgi] }
+  cost_model:      { active: local,             available: [local, serverless, self_host] }
+  graph:           { active: neo4j,             available: [neo4j] }
+  visual:          { active: colpali,           available: [colpali] }
