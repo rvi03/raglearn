@@ -31,6 +31,25 @@ class ChunkType(StrEnum):
     KPI = "kpi"
 
 
+class DetectedFormat(StrEnum):
+    """The coarse format a detector reports, used to route a document to a parser.
+
+    This is the format family, not the precise media type: XBRL and any other
+    XML share ``XML`` here, and telling them apart (root element, inline ``ix:``
+    tags) is a later content step, not the detector's job. ``IMAGE`` covers
+    raster files (PNG/JPEG/TIFF/...) whose content is only recoverable by OCR;
+    it routes to the same vision parser as ``PDF``. ``UNKNOWN`` covers anything
+    unrecognized and routes to quarantine.
+    """
+
+    PDF = "pdf"
+    IMAGE = "image"
+    HTML = "html"
+    XML = "xml"
+    TEXT = "text"
+    UNKNOWN = "unknown"
+
+
 class FactOrigin(StrEnum):
     """Where a structured financial figure came from.
 
@@ -65,6 +84,8 @@ class RawDocument(BaseModel):
     """A document as received from a connector, before parsing.
 
     Either ``path`` (local file) or ``data`` (in-memory bytes) is set.
+    ``source_bucket`` records the object-store bucket the document came from,
+    so the XBRL lane can fetch its sibling bundle files (schema, linkbases).
     """
 
     doc_id: str
@@ -72,6 +93,7 @@ class RawDocument(BaseModel):
     content_type: str
     path: str | None = None
     data: bytes | None = None
+    source_bucket: str | None = None
 
 
 class ConnectorRequest(BaseModel):

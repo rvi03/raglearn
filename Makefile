@@ -1,7 +1,7 @@
 # raglearn developer commands. Backend tasks run through uv; stack tasks through
 # Docker Compose. Run `make help` for the list.
 
-COMPOSE := docker compose -f infra/compose.yaml
+COMPOSE := docker-compose -f infra/compose.yaml
 BACKEND := backend
 
 .DEFAULT_GOAL := help

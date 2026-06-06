@@ -11,12 +11,19 @@ services:
   redis_url: redis://localhost:6379/0
   ollama_url: http://localhost:11434
   minio_endpoint: http://localhost:9000
+  minio_access_key: raglearn
+  minio_secret_key: raglearn-secret
+  tika_url: http://localhost:9998
+  # Redpanda's host-reachable (external) listener; in-network is raglearn-redpanda:9092.
+  redpanda_broker: localhost:19092
+  ingest_topic: raglearn-ingest
 
 adapters:
   connector:       { active: upload,            available: [edgar, upload, data_gov_in] }
   metadata:        { active: edgar_api,         available: [edgar_api, user_tag, llm_classify, rules] }
   intake:          { active: content_hash,      available: [content_hash] }
-  xbrl_extract:    { active: edgartools,         available: [edgartools, arelle] }
+  format_detector: { active: tika,              available: [tika] }
+  xbrl_extract:    { active: arelle,             available: [arelle, edgartools] }
   parser:          { active: docling,            available: [docling, pypdfium2, opendataloader] }
   chunker:         { active: structure_aware,   available: [structure_aware, semantic, fixed] }
   embedder:        { active: bge_m3,            available: [bge_m3, e5, nomic, fin_e5] }

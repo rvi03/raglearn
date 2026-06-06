@@ -33,6 +33,11 @@ _ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
     "RAGLEARN_REDIS_URL": ("services", "redis_url"),
     "RAGLEARN_OLLAMA_URL": ("services", "ollama_url"),
     "RAGLEARN_MINIO_ENDPOINT": ("services", "minio_endpoint"),
+    "RAGLEARN_TIKA_URL": ("services", "tika_url"),
+    "RAGLEARN_MINIO_ACCESS_KEY": ("services", "minio_access_key"),
+    "RAGLEARN_MINIO_SECRET_KEY": ("services", "minio_secret_key"),
+    "RAGLEARN_REDPANDA_BROKER": ("services", "redpanda_broker"),
+    "RAGLEARN_INGEST_TOPIC": ("services", "ingest_topic"),
 }
 
 
@@ -44,13 +49,18 @@ class Env(StrEnum):
 
 
 class ServiceSettings(BaseModel):
-    """Connection endpoints for the backing services."""
+    """Connection endpoints and credentials for the backing services."""
 
     qdrant_url: str
     postgres_dsn: str
     redis_url: str
     ollama_url: str
     minio_endpoint: str
+    minio_access_key: str
+    minio_secret_key: str
+    redpanda_broker: str
+    ingest_topic: str
+    tika_url: str
 
 
 class StageAdapters(BaseModel):

@@ -21,4 +21,5 @@ __pycache__/
 
 # Local data (DuckDB files, downloaded filings, page images)
 /data/
+/data/
 

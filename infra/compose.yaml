@@ -50,6 +50,37 @@ services:
       retries: 5
     restart: unless-stopped
 
+  raglearn-redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: raglearn-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      - --node-id=0
+      # internal listener for in-network producers (MinIO); external for host CLI/tools.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://raglearn-redpanda:9092,external://localhost:19092
+    ports: ["19092:19092", "9644:9644"]
+    volumes: [redpanda-data:/var/lib/redpanda/data]
+    networks: [raglearn-net]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Content-based format detection. Stateless; the consumer PUTs document bytes
+  # and reads back a media type. Pinned for reproducible detection results.
+  raglearn-tika:
+    image: apache/tika:2.9.2.1
+    container_name: raglearn-tika
+    ports: ["9998:9998"]
+    networks: [raglearn-net]
+    restart: unless-stopped
+
   raglearn-minio:
     image: minio/minio:latest
     container_name: raglearn-minio
@@ -57,10 +88,34 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-raglearn}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-raglearn-secret}
+      # Kafka notification target "ingest": file events are published to Redpanda.
+      # A bucket-level rule binding this target is added by infra/minio/init.sh.
+      MINIO_NOTIFY_KAFKA_ENABLE_ingest: "on"
+      MINIO_NOTIFY_KAFKA_BROKERS_ingest: raglearn-redpanda:9092
+      MINIO_NOTIFY_KAFKA_TOPIC_ingest: ${INGEST_TOPIC:-raglearn-ingest}
     ports: ["9000:9000", "9001:9001"]
     volumes: [minio-data:/data]
+    depends_on:
+      raglearn-redpanda: {condition: service_healthy}
     networks: [raglearn-net]
     restart: unless-stopped
+
+  # One-shot: creates the filings bucket and binds its upload events to Redpanda,
+  # then exits. Idempotent, so it runs harmlessly on every `up`.
+  raglearn-minio-init:
+    image: minio/mc:latest
+    container_name: raglearn-minio-init
+    entrypoint: ["sh", "/init.sh"]
+    environment:
+      MINIO_ENDPOINT: http://raglearn-minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-raglearn}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-raglearn-secret}
+      INGEST_BUCKET: ${INGEST_BUCKET:-filings}
+    volumes: ["./minio/init.sh:/init.sh:ro"]
+    depends_on:
+      raglearn-minio: {condition: service_started}
+    networks: [raglearn-net]
+    restart: "no"
 
   raglearn-api:
     build:
@@ -75,6 +130,7 @@ services:
       RAGLEARN_REDIS_URL: redis://raglearn-redis:6379/0
       RAGLEARN_OLLAMA_URL: http://raglearn-ollama:11434
       RAGLEARN_MINIO_ENDPOINT: http://raglearn-minio:9000
+      RAGLEARN_TIKA_URL: http://raglearn-tika:9998
     ports: ["8000:8000"]
     volumes: [duckdb-data:/app/data]
     depends_on:
@@ -83,6 +139,7 @@ services:
       raglearn-qdrant: {condition: service_started}
       raglearn-ollama: {condition: service_started}
       raglearn-minio: {condition: service_started}
+      raglearn-tika: {condition: service_started}
     networks: [raglearn-net]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -97,6 +154,7 @@ volumes:
   postgres-data: {}
   redis-data: {}
   minio-data: {}
+  redpanda-data: {}
   duckdb-data: {}
 
 networks:

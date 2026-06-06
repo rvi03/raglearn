@@ -12,11 +12,22 @@ from typing import Protocol, runtime_checkable
 from raglearn.core.types import (
     Chunk,
     ConnectorRequest,
+    DetectedFormat,
     DocumentMetadata,
     EmbeddingVector,
+    FinancialFact,
     ParsedPage,
     RawDocument,
 )
+
+
+@runtime_checkable
+class FormatDetector(Protocol):
+    """Identifies a document's format from its content, ignoring its filename."""
+
+    def detect(self, data: bytes) -> DetectedFormat:
+        """Return the coarse format of the given document bytes."""
+        ...
 
 
 @runtime_checkable
@@ -52,6 +63,21 @@ class DocumentParser(Protocol):
 
     def parse(self, document: RawDocument) -> Iterator[ParsedPage]:
         """Yield parsed pages for the document."""
+        ...
+
+
+@runtime_checkable
+class StructuredExtractor(Protocol):
+    """Extracts exact structured figures (XBRL facts) from a filing.
+
+    This is the facts arm of the parse router, parallel to
+    :class:`DocumentParser`'s pages arm: XBRL carries the filer's as-filed
+    numbers, so it is pulled as :class:`~raglearn.core.types.FinancialFact`s
+    bound for the structured store rather than parsed into text pages.
+    """
+
+    def extract(self, document: RawDocument) -> Iterator[FinancialFact]:
+        """Yield the structured facts of the given XBRL document."""
         ...
 
 
