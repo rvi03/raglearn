@@ -25,7 +25,7 @@ from raglearn.core.interfaces.retrieval import (
     StructuredQA,
     VisualRetriever,
 )
-from raglearn.core.interfaces.storage import GraphIndex, VectorStore
+from raglearn.core.interfaces.storage import GraphIndex, StructuredStore, VectorStore
 
 __all__ = [
     "Chunker",
@@ -44,6 +44,7 @@ __all__ = [
     "Router",
     "SourceConnector",
     "StructuredQA",
+    "StructuredStore",
     "VectorStore",
     "VisualRetriever",
 ]

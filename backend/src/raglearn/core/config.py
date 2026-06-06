@@ -38,6 +38,7 @@ _ENV_OVERRIDES: dict[str, tuple[str, ...]] = {
     "RAGLEARN_MINIO_SECRET_KEY": ("services", "minio_secret_key"),
     "RAGLEARN_REDPANDA_BROKER": ("services", "redpanda_broker"),
     "RAGLEARN_INGEST_TOPIC": ("services", "ingest_topic"),
+    "RAGLEARN_DUCKDB_PATH": ("services", "duckdb_path"),
 }
 
 
@@ -61,6 +62,7 @@ class ServiceSettings(BaseModel):
     redpanda_broker: str
     ingest_topic: str
     tika_url: str
+    duckdb_path: str
 
 
 class StageAdapters(BaseModel):

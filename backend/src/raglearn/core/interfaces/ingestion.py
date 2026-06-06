@@ -15,9 +15,10 @@ from raglearn.core.types import (
     DetectedFormat,
     DocumentMetadata,
     EmbeddingVector,
-    FinancialFact,
     ParsedPage,
+    ParsedStructure,
     RawDocument,
+    XbrlExtraction,
 )
 
 
@@ -68,25 +69,25 @@ class DocumentParser(Protocol):
 
 @runtime_checkable
 class StructuredExtractor(Protocol):
-    """Extracts exact structured figures (XBRL facts) from a filing.
+    """Extracts a filing's structured output (metadata + XBRL facts) in one pass.
 
     This is the facts arm of the parse router, parallel to
     :class:`DocumentParser`'s pages arm: XBRL carries the filer's as-filed
-    numbers, so it is pulled as :class:`~raglearn.core.types.FinancialFact`s
-    bound for the structured store rather than parsed into text pages.
+    numbers and its DEI metadata, both pulled from a single load and bound for
+    the structured store rather than parsed into text pages.
     """
 
-    def extract(self, document: RawDocument) -> Iterator[FinancialFact]:
-        """Yield the structured facts of the given XBRL document."""
+    def extract(self, document: RawDocument) -> XbrlExtraction | None:
+        """Return the filing's extraction, or ``None`` if its bundle is incomplete."""
         ...
 
 
 @runtime_checkable
 class Chunker(Protocol):
-    """Splits parsed pages into structure-aware chunks carrying metadata."""
+    """Splits a parsed document's section structure into chunks carrying metadata."""
 
-    def chunk(self, pages: Sequence[ParsedPage], metadata: DocumentMetadata) -> Iterator[Chunk]:
-        """Yield chunks for the given pages."""
+    def chunk(self, structure: ParsedStructure, metadata: DocumentMetadata) -> Iterator[Chunk]:
+        """Yield chunks for the given parsed structure."""
         ...
 
 

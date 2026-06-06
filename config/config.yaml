@@ -17,6 +17,8 @@ services:
   # Redpanda's host-reachable (external) listener; in-network is raglearn-redpanda:9092.
   redpanda_broker: localhost:19092
   ingest_topic: raglearn-ingest
+  # DuckDB structured store (XBRL facts). Single-writer; the consumer owns it.
+  duckdb_path: raglearn.duckdb
 
 adapters:
   connector:       { active: upload,            available: [edgar, upload, data_gov_in] }
@@ -28,6 +30,7 @@ adapters:
   chunker:         { active: structure_aware,   available: [structure_aware, semantic, fixed] }
   embedder:        { active: bge_m3,            available: [bge_m3, e5, nomic, fin_e5] }
   vector_store:    { active: qdrant,            available: [qdrant, weaviate, pgvector] }
+  structured_store: { active: duckdb,           available: [duckdb] }
   retriever:       { active: hybrid,            available: [hybrid, dense, sparse] }
   reranker:        { active: bge_reranker,      available: [bge_reranker, jina, none] }
   fusion:          { active: rrf_cross_encoder, available: [rrf_cross_encoder, weighted, llm_merge] }

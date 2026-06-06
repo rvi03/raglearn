@@ -9,7 +9,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
-from raglearn.core.types import Chunk, EmbeddingVector, ScoredChunk
+from raglearn.core.types import Chunk, EmbeddingVector, ScoredChunk, XbrlExtraction
+
+
+@runtime_checkable
+class StructuredStore(Protocol):
+    """Persists a filing's structured output (collection, filing, facts) to DuckDB."""
+
+    def write(self, extraction: XbrlExtraction) -> int:
+        """Write the collection, filing, and facts atomically; return facts written.
+
+        Idempotent: re-ingesting a filing leaves existing rows untouched.
+        """
+        ...
 
 
 @runtime_checkable

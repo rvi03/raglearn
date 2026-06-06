@@ -12,10 +12,13 @@ from __future__ import annotations
 import pytest
 
 from raglearn.core.errors import IngestionError
-from raglearn.core.types import FactOrigin, RawDocument
+from raglearn.core.types import FactOrigin, Market, RawDocument
 from raglearn.ingestion.bundle import BundleAssembler
 from raglearn.ingestion.xbrl_extract import (
     ArelleXbrlExtractor,
+    _build_metadata,
+    _dimensions,
+    _to_int,
     extract_facts,
     is_inline_xbrl,
     is_xbrl_instance,
@@ -187,20 +190,127 @@ def test_extract_facts_deduplicates_repeated_facts(tmp_path) -> None:  # type: i
 
 
 def test_extractor_extracts_from_a_complete_bundle() -> None:
-    facts = list(ArelleXbrlExtractor(BundleAssembler(_mock_store())).extract(_doc("mock.xml")))  # type: ignore[arg-type]
+    extraction = ArelleXbrlExtractor(BundleAssembler(_mock_store())).extract(_doc("mock.xml"))  # type: ignore[arg-type]
 
-    assert [(f.concept, f.value) for f in facts] == [("mock:Revenue", 100.0)]
-    assert all(f.filing_id == "0000-00-000" for f in facts)
+    assert extraction is not None
+    assert [(f.concept, f.value) for f in extraction.facts] == [("mock:Revenue", 100.0)]
+    assert all(f.filing_id == "0000-00-000" for f in extraction.facts)
+    # No DEI in the mock → the per-filing collection fallback.
+    assert extraction.filing.filing_id == "0000-00-000"
+    assert extraction.collection.collection_id == "us-0000-00-000"
 
 
 def test_extractor_defers_until_schema_is_present() -> None:
     store = _mock_store(with_schema=False)
-    deferred = list(ArelleXbrlExtractor(BundleAssembler(store)).extract(_doc("mock.xml")))  # type: ignore[arg-type]
-    assert deferred == []
+    extraction = ArelleXbrlExtractor(BundleAssembler(store)).extract(_doc("mock.xml"))  # type: ignore[arg-type]
+    assert extraction is None
 
 
 def test_schema_event_completes_the_bundle_via_located_instance() -> None:
     # The .xsd event (not the instance) must locate the instance and extract.
-    facts = list(ArelleXbrlExtractor(BundleAssembler(_mock_store())).extract(_doc("mock.xsd")))  # type: ignore[arg-type]
+    extraction = ArelleXbrlExtractor(BundleAssembler(_mock_store())).extract(_doc("mock.xsd"))  # type: ignore[arg-type]
 
-    assert any(f.concept == "mock:Revenue" and f.value == 100.0 for f in facts)
+    assert extraction is not None
+    assert any(f.concept == "mock:Revenue" and f.value == 100.0 for f in extraction.facts)
+
+
+# --- DEI -> metadata mapping --------------------------------------------------
+# The Arelle DEI *iteration* is exercised by a live smoke on a real filing (no DEI
+# taxonomy ships in the hermetic mock); the pure DEI -> rows mapping is unit-tested
+# here with fabricated, non-real DEI values.
+
+
+def test_build_metadata_maps_dei_to_collection_and_filing() -> None:
+    dei = {
+        "EntityRegistrantName": "Mock Corp",
+        "EntityCentralIndexKey": "1234567",
+        "TradingSymbol": "MOCK",
+        "DocumentType": "10-K",
+        "DocumentFiscalYearFocus": "2024",
+        "DocumentFiscalPeriodFocus": "FY",
+    }
+
+    collection, filing = _build_metadata(dei, "acc-1")
+
+    assert collection.collection_id == "us-cik-1234567"
+    assert (collection.company, collection.ticker, collection.cik) == (
+        "Mock Corp",
+        "MOCK",
+        "1234567",
+    )
+    assert collection.market is Market.US
+    assert filing.collection_id == "us-cik-1234567"
+    assert (filing.filing_type, filing.fiscal_year, filing.fiscal_period) == ("10-K", 2024, "FY")
+
+
+def test_build_metadata_without_cik_falls_back_to_a_per_filing_collection() -> None:
+    collection, filing = _build_metadata({}, "acc-1")
+
+    assert collection.collection_id == "us-acc-1"
+    assert filing.collection_id == "us-acc-1"
+    assert collection.company is None
+    assert filing.fiscal_year is None
+
+
+def test_to_int_parses_a_year_or_returns_none() -> None:
+    assert _to_int("2024") == 2024
+    assert _to_int(None) is None
+    assert _to_int("not-a-year") is None
+
+
+# --- dimension rendering (the fact_id key must be total over both kinds) -------
+# Arelle's dimension-value objects are duck-typed here: explicit members expose a
+# QName, typed members expose an element carrying a stringValue. These stand in
+# for them so the rendering is tested without building a dimensional filing.
+
+
+class _Axis:
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __str__(self) -> str:
+        return self._name
+
+
+class _ExplicitMember:
+    isExplicit = True  # noqa: N815 (mirrors Arelle's attribute name)
+
+    def __init__(self, member: str) -> None:
+        self.memberQname = _Axis(member)
+
+
+class _TypedMember:
+    isExplicit = False  # noqa: N815 (mirrors Arelle's attribute name)
+
+    class _Element:
+        def __init__(self, value: str) -> None:
+            self.stringValue = value
+
+    def __init__(self, value: str) -> None:
+        self.typedMember = _TypedMember._Element(value)
+
+
+class _Context:
+    def __init__(self, dims: dict[object, object]) -> None:
+        self.qnameDims = dims
+
+
+def test_dimensions_is_none_when_undimensioned() -> None:
+    assert _dimensions(_Context({})) is None
+
+
+def test_dimensions_renders_an_explicit_member() -> None:
+    ctx = _Context({_Axis("seg:Axis"): _ExplicitMember("seg:iPhone")})
+    assert _dimensions(ctx) == "seg:Axis=seg:iPhone"
+
+
+def test_dimensions_includes_a_typed_member() -> None:
+    # The gap this closes: a typed member must not be dropped, or two facts that
+    # differ only by it would collapse onto one fact_id.
+    ctx = _Context({_Axis("seg:PropertyAxis"): _TypedMember("123 Main St")})
+    assert _dimensions(ctx) == "seg:PropertyAxis=123 Main St"
+
+
+def test_dimensions_are_sorted_by_axis_for_a_stable_key() -> None:
+    dims = {_Axis("b:Axis"): _ExplicitMember("b:M"), _Axis("a:Axis"): _TypedMember("v")}
+    assert _dimensions(_Context(dims)) == "a:Axis=v;b:Axis=b:M"

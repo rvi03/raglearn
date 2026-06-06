@@ -34,11 +34,11 @@ def _put_event(key: str, *, content_type: str = "text/html", size: int = 42) -> 
 
 
 def test_decodes_single_put_event() -> None:
-    events = parse_object_events(_put_event("apple%2F2025%2Fsub%2Fdeep.htm"))
+    events = parse_object_events(_put_event("mockco%2F2025%2Fsub%2Fdeep.htm"))
     assert len(events) == 1
     event = events[0]
     assert event.bucket == "filings"
-    assert event.key == "apple/2025/sub/deep.htm"  # %2F decoded to path separator
+    assert event.key == "mockco/2025/sub/deep.htm"  # %2F decoded to path separator
     assert event.event_name == "s3:ObjectCreated:Put"
     assert event.content_type == "text/html"
     assert event.size == 42
@@ -46,13 +46,13 @@ def test_decodes_single_put_event() -> None:
 
 
 def test_decodes_space_encoded_as_plus() -> None:
-    events = parse_object_events(_put_event("etsy%2FQ1+report.pdf"))
-    assert events[0].key == "etsy/Q1 report.pdf"
+    events = parse_object_events(_put_event("mockco%2FQ1+report.pdf"))
+    assert events[0].key == "mockco/Q1 report.pdf"
 
 
 def test_accepts_bytes_message() -> None:
-    events = parse_object_events(_put_event("nvda%2F10k.htm").encode("utf-8"))
-    assert events[0].key == "nvda/10k.htm"
+    events = parse_object_events(_put_event("mockco%2F10k.htm").encode("utf-8"))
+    assert events[0].key == "mockco/10k.htm"
 
 
 def test_multiple_records_yield_multiple_events() -> None:

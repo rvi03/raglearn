@@ -11,7 +11,17 @@ from collections.abc import Iterator
 
 import pytest
 
-from raglearn.core.types import DetectedFormat, FinancialFact, ParsedPage, RawDocument
+from raglearn.core.types import (
+    CollectionMetadata,
+    DetectedFormat,
+    FactOrigin,
+    FilingMetadata,
+    FinancialFact,
+    Market,
+    ParsedPage,
+    RawDocument,
+    XbrlExtraction,
+)
 from raglearn.ingestion.docling_backend import DoclingParser
 from raglearn.ingestion.parsers import QuarantineParser, TextParser
 from raglearn.ingestion.router import ParserRouter, default_parsers
@@ -49,15 +59,36 @@ class _RecordingParser:
         return iter(())
 
 
+def _extraction(facts: list[FinancialFact] | None = None) -> XbrlExtraction:
+    return XbrlExtraction(
+        collection=CollectionMetadata(collection_id="us-cik-1", market=Market.US),
+        filing=FilingMetadata(filing_id="acc-1", collection_id="us-cik-1"),
+        facts=facts or [],
+    )
+
+
 class _RecordingExtractor:
-    """Fact extractor that records the documents handed to it and yields nothing."""
+    """Extractor returning a preset extraction (or None to defer), recording calls."""
+
+    def __init__(self, extraction: XbrlExtraction | None = None, *, defer: bool = False) -> None:
+        self.calls: list[str] = []
+        self._extraction = extraction if extraction is not None else _extraction()
+        self._defer = defer
+
+    def extract(self, document: RawDocument) -> XbrlExtraction | None:
+        self.calls.append(document.doc_id)
+        return None if self._defer else self._extraction
+
+
+class _RecordingSink:
+    """Structured sink that captures every extraction written to it."""
 
     def __init__(self) -> None:
-        self.calls: list[str] = []
+        self.writes: list[XbrlExtraction] = []
 
-    def extract(self, document: RawDocument) -> Iterator[FinancialFact]:
-        self.calls.append(document.doc_id)
-        return iter(())
+    def write(self, extraction: XbrlExtraction) -> int:
+        self.writes.append(extraction)
+        return len(extraction.facts)
 
 
 def _doc(data: bytes = b"bytes") -> RawDocument:
@@ -68,9 +99,12 @@ def _router(
     fmt: DetectedFormat,
     parsers: dict[DetectedFormat, _RecordingParser] | None = None,
     extractor: _RecordingExtractor | None = None,
+    sink: _RecordingSink | None = None,
 ) -> ParserRouter:
     table = parsers if parsers is not None else {DetectedFormat.UNKNOWN: _RecordingParser()}
-    return ParserRouter(_FakeDetector(fmt), table, extractor or _RecordingExtractor())
+    return ParserRouter(
+        _FakeDetector(fmt), table, extractor or _RecordingExtractor(), sink or _RecordingSink()
+    )
 
 
 # --- pages arm ----------------------------------------------------------------
@@ -91,7 +125,10 @@ def test_route_dispatches_to_the_detected_formats_parser() -> None:
 def test_route_passes_document_bytes_to_the_detector() -> None:
     detector = _FakeDetector(DetectedFormat.TEXT)
     router = ParserRouter(
-        detector, {DetectedFormat.UNKNOWN: _RecordingParser()}, _RecordingExtractor()
+        detector,
+        {DetectedFormat.UNKNOWN: _RecordingParser()},
+        _RecordingExtractor(),
+        _RecordingSink(),
     )
 
     list(router.route(_doc(b"hello")))
@@ -117,6 +154,7 @@ def test_table_without_unknown_entry_is_rejected() -> None:
             _FakeDetector(DetectedFormat.PDF),
             {DetectedFormat.PDF: _RecordingParser()},
             _RecordingExtractor(),
+            _RecordingSink(),
         )
 
 
@@ -161,6 +199,40 @@ def test_plain_html_goes_to_the_pages_arm() -> None:
 
     assert parser.calls == ["d1"]
     assert extractor.calls == []
+
+
+def test_facts_arm_writes_the_extraction_to_the_sink() -> None:
+    fact = FinancialFact(
+        fact_id="f1",
+        filing_id="acc-1",
+        concept="mock:Revenue",
+        value=100.0,
+        unit="USD",
+        period="2024-01-01/2024-12-31",
+        origin=FactOrigin.XBRL,
+    )
+    extraction = _extraction([fact])
+    extractor, sink = _RecordingExtractor(extraction), _RecordingSink()
+    router = _router(
+        DetectedFormat.XML, {DetectedFormat.UNKNOWN: _RecordingParser()}, extractor, sink
+    )
+
+    router.process(_doc(_INSTANCE))
+
+    assert sink.writes == [extraction]
+    assert sink.writes[0].facts == [fact]
+
+
+def test_facts_arm_with_an_incomplete_bundle_writes_nothing() -> None:
+    extractor, sink = _RecordingExtractor(defer=True), _RecordingSink()
+    router = _router(
+        DetectedFormat.XML, {DetectedFormat.UNKNOWN: _RecordingParser()}, extractor, sink
+    )
+
+    router.process(_doc(_INSTANCE))
+
+    assert extractor.calls == ["d1"]  # extraction attempted
+    assert sink.writes == []  # but nothing persisted (deferred)
 
 
 def test_standalone_xbrl_instance_goes_to_the_facts_arm() -> None:

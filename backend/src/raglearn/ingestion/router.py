@@ -29,6 +29,7 @@ from raglearn.core.interfaces.ingestion import (
     FormatDetector,
     StructuredExtractor,
 )
+from raglearn.core.interfaces.storage import StructuredStore
 from raglearn.core.types import DetectedFormat, ParsedPage, RawDocument
 from raglearn.core.wiring import resolve_adapter
 from raglearn.ingestion.bundle import BundleAssembler
@@ -53,8 +54,9 @@ class ParserRouter:
         detector: FormatDetector,
         parsers: Mapping[DetectedFormat, DocumentParser],
         extractor: StructuredExtractor,
+        sink: StructuredStore,
     ) -> None:
-        """Bind the router to a detector, a page-parser table, and a fact extractor.
+        """Bind the router to a detector, a page-parser table, an extractor, and a sink.
 
         Args:
           detector: Identifies a document's format from its bytes.
@@ -62,12 +64,14 @@ class ParserRouter:
             :attr:`~raglearn.core.types.DetectedFormat.UNKNOWN` entry, used as
             the fallback for any format absent from the table.
           extractor: Pulls structured facts from XBRL documents.
+          sink: Persists the extracted facts to the structured store.
         """
         if DetectedFormat.UNKNOWN not in parsers:
             raise ValueError("parser table must include an UNKNOWN (quarantine) entry")
         self._detector = detector
         self._parsers = dict(parsers)
         self._extractor = extractor
+        self._sink = sink
 
     def parser_for(self, fmt: DetectedFormat) -> DocumentParser:
         """Return the page parser for a format, falling back to quarantine."""
@@ -112,10 +116,10 @@ class ParserRouter:
         return fmt is DetectedFormat.XML and not is_xbrl_instance(data) and not is_xbrl_schema(data)
 
     def process(self, document: RawDocument) -> None:
-        """Route a document down the facts or pages arm and drain its output.
+        """Route a document down the facts or pages arm.
 
-        Chunking and the structured store attach downstream; until then the
-        output is consumed here so the handler actually runs.
+        Facts are extracted and persisted to the structured store; pages are
+        drained here until chunking attaches downstream.
 
         Args:
           document: The fetched document to route.
@@ -123,8 +127,18 @@ class ParserRouter:
         data = document.data or b""
         fmt = self._detector.detect(data)
         if self.is_facts_arm(fmt, data):
-            facts = sum(1 for _ in self._extractor.extract(document))
-            logger.info("routed %s: %s -> XBRL facts (%d)", document.doc_id, fmt.value, facts)
+            extraction = self._extractor.extract(document)
+            if extraction is None:
+                logger.debug("deferred %s: XBRL bundle incomplete", document.doc_id)
+            else:
+                written = self._sink.write(extraction)
+                logger.info(
+                    "routed %s: %s -> XBRL filing %s (%d facts)",
+                    document.doc_id,
+                    fmt.value,
+                    extraction.filing.filing_id,
+                    written,
+                )
         elif self.is_bundle_member(fmt, data):
             logger.debug("skipped %s: XBRL bundle member", document.doc_id)
         else:
@@ -158,11 +172,11 @@ def default_parsers() -> dict[DetectedFormat, DocumentParser]:
 
 
 def build_router(settings: Settings, store: ObjectStore) -> ParserRouter:
-    """Build a router with the config-active detector, parsers, and XBRL extractor.
+    """Build a router with the config-active detector, parsers, extractor, and sink.
 
     Args:
-      settings: Loaded application settings (selects the detector, carries its
-        Tika URL).
+      settings: Loaded application settings (selects the detector + structured
+        store, carries the Tika URL and DuckDB path).
       store: Object store the XBRL lane reads bundle files from.
 
     Returns:
@@ -170,4 +184,5 @@ def build_router(settings: Settings, store: ObjectStore) -> ParserRouter:
     """
     detector = resolve_adapter(settings, "format_detector", url=settings.services.tika_url)
     extractor = ArelleXbrlExtractor(BundleAssembler(store))
-    return ParserRouter(detector, default_parsers(), extractor)
+    sink = resolve_adapter(settings, "structured_store", path=settings.services.duckdb_path)
+    return ParserRouter(detector, default_parsers(), extractor, sink)

@@ -112,6 +112,51 @@ class ParsedPage(BaseModel):
     tables_markdown: list[str] = Field(default_factory=list)
 
 
+class BlockKind(StrEnum):
+    """The kind of a parsed content block within a section."""
+
+    TEXT = "text"
+    TABLE = "table"
+
+
+class StructureBlock(BaseModel):
+    """One contiguous piece of content inside a section: prose or a whole table.
+
+    ``text`` holds the prose for a ``TEXT`` block and the rendered markdown for a
+    ``TABLE`` block. ``page`` is the source page when the parser provides it
+    (Docling's vision pipeline does; the SEC HTML parser generally does not).
+    """
+
+    kind: BlockKind
+    text: str
+    page: int | None = None
+
+
+class StructureSection(BaseModel):
+    """A titled span of a document: a heading and the blocks beneath it.
+
+    ``title`` is ``None`` for the preamble (content before the first heading).
+    ``level`` is the heading depth: ``0`` for a top-level section (a filing's
+    ``Part``/``Item``), higher for nested subsections.
+    """
+
+    title: str | None
+    level: int
+    blocks: list[StructureBlock] = Field(default_factory=list)
+
+
+class ParsedStructure(BaseModel):
+    """A document reduced to its section structure, independent of the parser.
+
+    Both parse lanes normalize into this one shape — the SEC HTML parser
+    (sec-parser) and the PDF parser (Docling vision) — so the chunker consumes a
+    single representation and never depends on a parsing library's own types.
+    """
+
+    source_doc_id: str
+    sections: list[StructureSection] = Field(default_factory=list)
+
+
 class Chunk(BaseModel):
     """A unit of indexed content with its provenance."""
 
@@ -132,6 +177,52 @@ class FinancialFact(BaseModel):
     period: str
     dimension: str | None = None
     origin: FactOrigin
+
+
+class CollectionMetadata(BaseModel):
+    """A company-level collection (one company = one collection namespace).
+
+    Sourced from a filing's XBRL DEI facts. Fields are nullable because older
+    filings omit some DEI (e.g. ``TradingSymbol``).
+    """
+
+    collection_id: str
+    company: str | None = None
+    ticker: str | None = None
+    cik: str | None = None
+    market: Market
+    status: str = "ingested"
+
+
+class FilingMetadata(BaseModel):
+    """A filing-level row, the parent of its financial facts.
+
+    ``filed_date`` (EDGAR submission header) and ``source_url`` (connector) are
+    not in the XBRL instance, so they stay ``None`` until those sources land.
+    ``version`` defaults to 1; supersede logic (10-K/A) is the dedup step's job.
+    """
+
+    filing_id: str
+    collection_id: str
+    filing_type: str | None = None
+    fiscal_year: int | None = None
+    fiscal_period: str | None = None
+    filed_date: str | None = None
+    source_url: str | None = None
+    version: int = 1
+
+
+class XbrlExtraction(BaseModel):
+    """The full result of extracting one XBRL filing: its metadata and its facts.
+
+    A single Arelle load yields all three: the collection and filing rows (from
+    DEI) and the numeric facts. They are written together so a fact always has
+    its parent ``filings`` row (the foreign key holds).
+    """
+
+    collection: CollectionMetadata
+    filing: FilingMetadata
+    facts: list[FinancialFact]
 
 
 class EmbeddingVector(BaseModel):
