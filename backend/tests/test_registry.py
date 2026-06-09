@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from raglearn.core.bootstrap import load_adapters
-from raglearn.core.errors import AdapterNotImplementedError, RegistryError
-from raglearn.core.registry import Registry
-from raglearn.core.registry import registry as global_registry
+from finrag.core.bootstrap import load_adapters
+from finrag.core.errors import AdapterNotImplementedError, RegistryError
+from finrag.core.registry import Registry
+from finrag.core.registry import registry as global_registry
 
 
 def test_register_and_create() -> None:

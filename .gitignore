@@ -24,3 +24,7 @@ __pycache__/
 *.duckdb
 *.duckdb.wal
 
+# Integration tests requiring a live Postgres (kept local, not committed)
+backend/tests/test_stores_postgres_chat.py
+backend/tests/test_stores_postgres_structured.py
+

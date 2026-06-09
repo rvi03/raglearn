@@ -1,6 +1,6 @@
 # Cloud overlay: GPU serving via vLLM.
 # Only the LLM backend and cost model differ from dev; the rest of the stack and
-# all service URLs come from config.yaml + RAGLEARN_* env vars.
+# all service URLs come from config.yaml + FINRAG_* env vars.
 
 env: cloud
 log_level: INFO

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from raglearn.core.types import (
+from finrag.core.types import (
     BlockKind,
     ChunkType,
     DocumentMetadata,
@@ -19,8 +19,8 @@ from raglearn.core.types import (
     StructureBlock,
     StructureSection,
 )
-from raglearn.ingestion.chunking.fixed import FixedChunker
-from raglearn.ingestion.chunking.semantic import SemanticChunker
+from finrag.ingestion.chunking.fixed import FixedChunker
+from finrag.ingestion.chunking.semantic import SemanticChunker
 
 
 def char_tokens(text: str) -> int:

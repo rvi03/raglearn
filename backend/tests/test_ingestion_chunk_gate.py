@@ -11,7 +11,7 @@ from collections.abc import Iterator, Sequence
 
 import pytest
 
-from raglearn.core.types import (
+from finrag.core.types import (
     BlockKind,
     Chunk,
     ChunkType,
@@ -22,8 +22,8 @@ from raglearn.core.types import (
     StructureBlock,
     StructureSection,
 )
-from raglearn.ingestion.chunking.gate import QualityGate
-from raglearn.ingestion.chunking.router import ChunkRouter
+from finrag.ingestion.chunking.gate import QualityGate
+from finrag.ingestion.chunking.router import ChunkRouter
 
 
 def char_tokens(text: str) -> int:

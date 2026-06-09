@@ -1,0 +1,180 @@
+# Optional Langfuse v3 observability stack (opt-in overlay).
+#
+#   docker compose -f infra/compose.yaml -f infra/compose.langfuse.yaml up -d
+#
+# Heavy: ClickHouse + two Node services. Give the Colima VM headroom first:
+#   colima stop && colima start --cpu 4 --memory 8
+#
+# Langfuse gets its own postgres/redis/clickhouse (`finrag-langfuse-*`) but
+# REUSES the app's object store `finrag-minio` for its required S3-compatible
+# event/media staging (a one-shot creates the `langfuse` bucket). The API ships
+# traces here over OTLP/HTTP only (set `observability.exporters: [langfuse]`).
+#
+# Secrets below are dev defaults baked for a turnkey local boot — override via env
+# for anything shared. The init keys provision a project so the API's
+# LANGFUSE_PUBLIC_KEY/SECRET_KEY match out of the box.
+
+name: finrag
+
+# Shared by langfuse-web and langfuse-worker (they run the same env).
+x-langfuse-env: &langfuse-env
+  DATABASE_URL: postgresql://langfuse:langfuse@finrag-langfuse-postgres:5432/langfuse
+  SALT: ${LANGFUSE_SALT:-609abf21579ffe335e8166729f6c23998c1eafe71da79e8bf8bf95c88dece21f}
+  ENCRYPTION_KEY: ${LANGFUSE_ENCRYPTION_KEY:-391dd7ebf3fbf5d6fc7a298d777be4615930c3caa3f1f7bba7a62f0577d11bbd}
+  TELEMETRY_ENABLED: "true"
+  LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+  CLICKHOUSE_MIGRATION_URL: clickhouse://finrag-clickhouse:9000
+  CLICKHOUSE_URL: http://finrag-clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
+  # S3-compatible object storage = the app's own MinIO (finrag-minio), bucket `langfuse`.
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-finrag}
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-finrag-secret}
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://finrag-minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-finrag}
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-finrag-secret}
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://finrag-minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+  LANGFUSE_S3_BATCH_EXPORT_ENABLED: "false"
+  REDIS_HOST: finrag-langfuse-redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: ${LANGFUSE_REDIS_AUTH:-langfuse-redis}
+  REDIS_TLS_ENABLED: "false"
+
+services:
+  finrag-langfuse-postgres:
+    image: postgres:16-alpine
+    container_name: finrag-langfuse-postgres
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes: [langfuse-postgres-data:/var/lib/postgresql/data]
+    networks: [finrag-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  finrag-langfuse-redis:
+    image: redis:7-alpine
+    container_name: finrag-langfuse-redis
+    command: ["redis-server", "--requirepass", "${LANGFUSE_REDIS_AUTH:-langfuse-redis}"]
+    volumes: [langfuse-redis-data:/data]
+    networks: [finrag-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${LANGFUSE_REDIS_AUTH:-langfuse-redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  finrag-clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: finrag-clickhouse
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    networks: [finrag-net]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  # One-shot: create the `langfuse` bucket in the app's MinIO, then exit.
+  # Idempotent, so it runs harmlessly on every `up`.
+  finrag-langfuse-minio-init:
+    image: minio/mc:latest
+    container_name: finrag-langfuse-minio-init
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        until mc alias set rl http://finrag-minio:9000
+        "${MINIO_ROOT_USER:-finrag}" "${MINIO_ROOT_PASSWORD:-finrag-secret}" >/dev/null 2>&1;
+        do echo 'waiting for finrag-minio...'; sleep 1; done;
+        mc mb --ignore-existing rl/langfuse;
+        echo 'ready: bucket langfuse'
+    depends_on:
+      finrag-minio: {condition: service_started}
+    networks: [finrag-net]
+    restart: "no"
+
+  finrag-langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    container_name: finrag-langfuse-worker
+    environment:
+      <<: *langfuse-env
+    depends_on:
+      finrag-langfuse-postgres: {condition: service_healthy}
+      finrag-langfuse-redis: {condition: service_healthy}
+      finrag-clickhouse: {condition: service_healthy}
+      finrag-langfuse-minio-init: {condition: service_completed_successfully}
+    networks: [finrag-net]
+    restart: unless-stopped
+
+  finrag-langfuse-web:
+    image: langfuse/langfuse:3
+    container_name: finrag-langfuse-web
+    environment:
+      <<: *langfuse-env
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-3d4d2ea1bb3a3218dde53cffbda6bc4bf36bddd75cdb80fc77b6246d47b9c9bb}
+      # Provision a deterministic org/project/user so the API's key pair matches.
+      LANGFUSE_INIT_ORG_ID: finrag
+      LANGFUSE_INIT_ORG_NAME: finrag
+      LANGFUSE_INIT_PROJECT_ID: finrag
+      LANGFUSE_INIT_PROJECT_NAME: finrag
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-finrag-dev}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-finrag-dev}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@finrag.local}
+      LANGFUSE_INIT_USER_NAME: finrag
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-finrag-admin}
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      finrag-langfuse-postgres: {condition: service_healthy}
+      finrag-langfuse-redis: {condition: service_healthy}
+      finrag-clickhouse: {condition: service_healthy}
+      finrag-langfuse-minio-init: {condition: service_completed_successfully}
+      finrag-langfuse-worker: {condition: service_started}
+    networks: [finrag-net]
+    healthcheck:
+      # GET (not --spider): the health route does not answer HEAD requests.
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O /dev/null http://localhost:3000/api/public/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # The API ships traces here once `observability.exporters` includes `langfuse`.
+  # These keys match the provisioned project above; URL is the in-network host.
+  finrag-api:
+    environment:
+      FINRAG_OBSERVABILITY_EXPORTERS: redis,langfuse
+      FINRAG_LANGFUSE_URL: http://finrag-langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-finrag-dev}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-finrag-dev}
+
+volumes:
+  langfuse-postgres-data: {}
+  langfuse-redis-data: {}
+  langfuse-clickhouse-data: {}
+  langfuse-clickhouse-logs: {}

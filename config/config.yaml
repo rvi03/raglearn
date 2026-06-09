@@ -1,4 +1,4 @@
-# Base configuration. Overlaid by config.<env>.yaml, then RAGLEARN_* env vars.
+# Base configuration. Overlaid by config.<env>.yaml, then FINRAG_* env vars.
 # `adapters` is the capability matrix: `active` is the selected adapter;
 # `available` lists declared alternatives. An adapter is reported as implemented
 # only when a class is registered for it.
@@ -7,22 +7,38 @@ log_level: INFO
 
 services:
   qdrant_url: http://localhost:6333
-  postgres_dsn: postgresql://raglearn:raglearn@localhost:5432/raglearn
+  postgres_dsn: postgresql://finrag:finrag@localhost:5432/finrag
   redis_url: redis://localhost:6379/0
   ollama_url: http://localhost:11434
   minio_endpoint: http://localhost:9000
-  minio_access_key: raglearn
-  minio_secret_key: raglearn-secret
+  minio_access_key: finrag
+  minio_secret_key: finrag-secret
   tika_url: http://localhost:9998
-  # Redpanda's host-reachable (external) listener; in-network is raglearn-redpanda:9092.
+  # Redpanda's host-reachable (external) listener; in-network is finrag-redpanda:9092.
   redpanda_broker: localhost:19092
-  ingest_topic: raglearn-ingest
+  ingest_topic: finrag-ingest
   # DuckDB structured store (XBRL facts). Single-writer; the consumer owns it.
-  duckdb_path: raglearn.duckdb
+  duckdb_path: finrag.duckdb
+  # Langfuse host base; only used when the langfuse trace exporter is enabled.
+  langfuse_url: http://localhost:3000
+
+# Ingestion pipeline tunables.
+# embed_batch_size: chunks encoded per embedder forward pass. Lower = quieter,
+# cooler, slower ingest; higher = more throughput, higher peak CPU. Override per
+# deploy with FINRAG_EMBED_BATCH_SIZE.
+ingestion:
+  embed_batch_size: 1
+
+# Cross-cutting observability. `exporters` fans the tracer out to these sinks
+# (any of: redis, langfuse). Empty = traces are logged only.
+observability:
+  exporters: []
 
 adapters:
   connector:       { active: upload,            available: [edgar, upload, data_gov_in] }
   metadata:        { active: edgar_api,         available: [edgar_api, user_tag, llm_classify, rules] }
+  # Identity is chosen per-document by the filings/<country>/ prefix, not by `active`.
+  identity_extractor: { active: us,             available: [us, india] }
   intake:          { active: content_hash,      available: [content_hash] }
   format_detector: { active: tika,              available: [tika] }
   xbrl_extract:    { active: arelle,             available: [arelle, edgartools] }
@@ -30,15 +46,20 @@ adapters:
   chunker:         { active: structure_aware,   available: [structure_aware, semantic, fixed] }
   embedder:        { active: bge_m3,            available: [bge_m3, e5, nomic, fin_e5] }
   vector_store:    { active: qdrant,            available: [qdrant, weaviate, pgvector] }
-  structured_store: { active: duckdb,           available: [duckdb] }
+  structured_store: { active: postgres,         available: [postgres, duckdb] }
   retriever:       { active: hybrid,            available: [hybrid, dense, sparse] }
   reranker:        { active: bge_reranker,      available: [bge_reranker, jina, none] }
-  fusion:          { active: rrf_cross_encoder, available: [rrf_cross_encoder, weighted, llm_merge] }
+  fusion:          { active: rrf,               available: [rrf, none] }
   query_transform: { active: rewrite,           available: [rewrite, decompose, hyde] }
-  router:          { active: llm_classify,      available: [llm_classify, rules, embedding_classifier] }
-  structured_qa:   { active: metric_registry,   available: [metric_registry, text_to_sql, table_qa] }
+  router:          { active: rules,             available: [llm_classify, rules, embedding_classifier] }
+  # text_to_sql = metric_registry first (authoritative), guarded LLM-SQL fallback for off-registry facts.
+  structured_qa:   { active: text_to_sql,        available: [metric_registry, text_to_sql, table_qa] }
   harness:         { active: citation_verify,   available: [citation_verify, self_consistency, reflection, judge_gate, numeric_verifier] }
   llm_backend:     { active: ollama,            available: [ollama, vllm, tgi] }
   cost_model:      { active: local,             available: [local, serverless, self_host] }
+  tracer:          { active: local,             available: [local] }
+  input_guard:     { active: heuristic,         available: [heuristic, llama_guard, nemo] }
+  output_guard:    { active: heuristic,         available: [heuristic, llama_guard, nemo] }
+  pii:             { active: regex,             available: [regex, presidio] }
   graph:           { active: neo4j,             available: [neo4j] }
   visual:          { active: colpali,           available: [colpali] }

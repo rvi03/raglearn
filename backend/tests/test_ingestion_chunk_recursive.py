@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from raglearn.ingestion.chunking.recursive import recursive_split
+from finrag.ingestion.chunking.recursive import recursive_split
 
 
 def char_tokens(text: str) -> int:

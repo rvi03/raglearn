@@ -19,11 +19,14 @@ def test_config_matrix_reports_implementation(client: TestClient) -> None:
     assert response.status_code == 200
     matrix = response.json()
 
-    # The local cost model is the one adapter actually implemented so far.
+    # The local cost model is implemented and active.
     cost = {a["name"]: a for a in matrix["cost_model"]["adapters"]}
     assert cost["local"]["implemented"] is True
     assert cost["local"]["active"] is True
 
-    # Everything else is declared but not yet implemented - the matrix is honest.
+    # The active bge-m3 embedder is implemented; its declared alternatives are
+    # not yet - the matrix stays honest about what's built.
     embedder = {a["name"]: a for a in matrix["embedder"]["adapters"]}
-    assert embedder["bge_m3"]["implemented"] is False
+    assert embedder["bge_m3"]["implemented"] is True
+    assert embedder["bge_m3"]["active"] is True
+    assert embedder["e5"]["implemented"] is False

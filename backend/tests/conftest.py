@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from raglearn.api.main import create_app
-from raglearn.core.config import Settings, load_settings
+from finrag.api.main import create_app
+from finrag.core.config import Settings, load_settings
 
 
 @pytest.fixture

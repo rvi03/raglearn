@@ -1,6 +1,6 @@
 # Local development overlay: Ollama on localhost, verbose logging.
 # Service URLs are inherited from config.yaml (localhost) and overridden by
-# RAGLEARN_* env vars when running under Docker Compose.
+# FINRAG_* env vars when running under Docker Compose.
 
 env: dev
 log_level: DEBUG

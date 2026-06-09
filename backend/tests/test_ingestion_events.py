@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from raglearn.core.errors import IngestionError
-from raglearn.ingestion.events import parse_object_events
+from finrag.core.errors import IngestionError
+from finrag.ingestion.events import parse_object_events
 
 
 def _put_event(key: str, *, content_type: str = "text/html", size: int = 42) -> str:

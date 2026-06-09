@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from raglearn.core.config import Env, load_settings
-from raglearn.core.errors import ConfigError
+from finrag.core.config import Env, load_settings
+from finrag.core.errors import ConfigError
 
 
 def test_dev_profile_loads(config_dir: Path) -> None:
@@ -25,9 +25,23 @@ def test_base_services_inherited(config_dir: Path) -> None:
 
 
 def test_env_override_applied(config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAGLEARN_QDRANT_URL", "http://raglearn-qdrant:6333")
+    monkeypatch.setenv("FINRAG_QDRANT_URL", "http://finrag-qdrant:6333")
     settings = load_settings(env="dev", config_dir=config_dir)
-    assert settings.services.qdrant_url == "http://raglearn-qdrant:6333"
+    assert settings.services.qdrant_url == "http://finrag-qdrant:6333"
+
+
+def test_exporters_env_override_parses_csv(
+    config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FINRAG_OBSERVABILITY_EXPORTERS", "redis, langfuse")
+    settings = load_settings(env="dev", config_dir=config_dir)
+    assert settings.observability.exporters == ["redis", "langfuse"]
+
+
+def test_exporters_default_empty(config_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FINRAG_OBSERVABILITY_EXPORTERS", raising=False)
+    settings = load_settings(env="dev", config_dir=config_dir)
+    assert settings.observability.exporters == []
 
 
 def test_missing_config_dir_raises(tmp_path: Path) -> None:

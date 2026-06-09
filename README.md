@@ -1,4 +1,4 @@
-# raglearn
+# finrag
 
 Agentic RAG over financial filings. Exact figures come from a structured store
 (XBRL + extracted tables); narrative comes from hybrid vector retrieval with
@@ -12,7 +12,7 @@ be swapped and compared with real evaluation numbers.
 
 ```bash
 cp .env.example .env
-make up        # build + start the stack (api, ollama, qdrant, postgres, redis, minio)
+make dev       # build + start everything: stack (api, ollama, qdrant, postgres, redis, minio) + frontend
 curl localhost:8000/health
 curl localhost:8000/config   # capability matrix: what's active and what's built
 ```

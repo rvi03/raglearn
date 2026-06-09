@@ -10,21 +10,21 @@
 # bucket and attach the per-bucket event rule that publishes to it.
 set -eu
 
-MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://raglearn-minio:9000}"
-MINIO_USER="${MINIO_ROOT_USER:-raglearn}"
-MINIO_PASSWORD="${MINIO_ROOT_PASSWORD:-raglearn-secret}"
+MINIO_ENDPOINT="${MINIO_ENDPOINT:-http://finrag-minio:9000}"
+MINIO_USER="${MINIO_ROOT_USER:-finrag}"
+MINIO_PASSWORD="${MINIO_ROOT_PASSWORD:-finrag-secret}"
 BUCKET="${INGEST_BUCKET:-filings}"
 
 # MinIO may still be coming up; retry the alias until the server answers.
 echo "waiting for MinIO at ${MINIO_ENDPOINT} ..."
-until mc alias set raglearn "${MINIO_ENDPOINT}" "${MINIO_USER}" "${MINIO_PASSWORD}" >/dev/null 2>&1; do
+until mc alias set finrag "${MINIO_ENDPOINT}" "${MINIO_USER}" "${MINIO_PASSWORD}" >/dev/null 2>&1; do
   sleep 1
 done
 
-mc mb --ignore-existing "raglearn/${BUCKET}"
+mc mb --ignore-existing "finrag/${BUCKET}"
 
 # Publish object-creation events for this bucket to the Kafka target "ingest".
-mc event add --ignore-existing "raglearn/${BUCKET}" arn:minio:sqs::ingest:kafka --event put
+mc event add --ignore-existing "finrag/${BUCKET}" arn:minio:sqs::ingest:kafka --event put
 
 echo "ready: bucket '${BUCKET}' notifies Kafka target 'ingest' on object upload"
-mc event ls "raglearn/${BUCKET}"
+mc event ls "finrag/${BUCKET}"

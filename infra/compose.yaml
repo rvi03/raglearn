@@ -1,48 +1,48 @@
-# raglearn local stack. `make up` builds and starts it.
+# finrag local stack. `make dev` builds and starts it (plus the frontend).
 # DuckDB is embedded (a file on the api volume), so it is not a service here.
 
-name: raglearn
+name: finrag
 
 services:
-  raglearn-ollama:
+  finrag-ollama:
     image: ollama/ollama:latest
-    container_name: raglearn-ollama
-    ports: ["11434:11434"]
+    container_name: finrag-ollama
+    ports: ["127.0.0.1:11434:11434"]
     volumes: [ollama-data:/root/.ollama]
-    networks: [raglearn-net]
+    networks: [finrag-net]
     restart: unless-stopped
 
-  raglearn-qdrant:
+  finrag-qdrant:
     image: qdrant/qdrant:latest
-    container_name: raglearn-qdrant
-    ports: ["6333:6333", "6334:6334"]
+    container_name: finrag-qdrant
+    ports: ["127.0.0.1:6333:6333", "127.0.0.1:6334:6334"]
     volumes: [qdrant-data:/qdrant/storage]
-    networks: [raglearn-net]
+    networks: [finrag-net]
     restart: unless-stopped
 
-  raglearn-postgres:
+  finrag-postgres:
     image: postgres:16-alpine
-    container_name: raglearn-postgres
+    container_name: finrag-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-raglearn}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-raglearn}
-      POSTGRES_DB: ${POSTGRES_DB:-raglearn}
-    ports: ["5432:5432"]
+      POSTGRES_USER: ${POSTGRES_USER:-finrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finrag}
+      POSTGRES_DB: ${POSTGRES_DB:-finrag}
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [postgres-data:/var/lib/postgresql/data]
-    networks: [raglearn-net]
+    networks: [finrag-net]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-raglearn}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finrag}"]
       interval: 10s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  raglearn-redis:
+  finrag-redis:
     image: redis:7-alpine
-    container_name: raglearn-redis
-    ports: ["6379:6379"]
+    container_name: finrag-redis
+    ports: ["127.0.0.1:6379:6379"]
     volumes: [redis-data:/data]
-    networks: [raglearn-net]
+    networks: [finrag-net]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -50,9 +50,9 @@ services:
       retries: 5
     restart: unless-stopped
 
-  raglearn-redpanda:
+  finrag-redpanda:
     image: redpandadata/redpanda:latest
-    container_name: raglearn-redpanda
+    container_name: finrag-redpanda
     command:
       - redpanda
       - start
@@ -61,10 +61,10 @@ services:
       - --node-id=0
       # internal listener for in-network producers (MinIO); external for host CLI/tools.
       - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr=internal://raglearn-redpanda:9092,external://localhost:19092
-    ports: ["19092:19092", "9644:9644"]
+      - --advertise-kafka-addr=internal://finrag-redpanda:9092,external://localhost:19092
+    ports: ["127.0.0.1:19092:19092", "127.0.0.1:9644:9644"]
     volumes: [redpanda-data:/var/lib/redpanda/data]
-    networks: [raglearn-net]
+    networks: [finrag-net]
     healthcheck:
       test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
       interval: 10s
@@ -74,78 +74,120 @@ services:
 
   # Content-based format detection. Stateless; the consumer PUTs document bytes
   # and reads back a media type. Pinned for reproducible detection results.
-  raglearn-tika:
+  finrag-tika:
     image: apache/tika:2.9.2.1
-    container_name: raglearn-tika
-    ports: ["9998:9998"]
-    networks: [raglearn-net]
+    container_name: finrag-tika
+    ports: ["127.0.0.1:9998:9998"]
+    networks: [finrag-net]
     restart: unless-stopped
 
-  raglearn-minio:
+  finrag-minio:
     image: minio/minio:latest
-    container_name: raglearn-minio
+    container_name: finrag-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-raglearn}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-raglearn-secret}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-finrag}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-finrag-secret}
       # Kafka notification target "ingest": file events are published to Redpanda.
       # A bucket-level rule binding this target is added by infra/minio/init.sh.
       MINIO_NOTIFY_KAFKA_ENABLE_ingest: "on"
-      MINIO_NOTIFY_KAFKA_BROKERS_ingest: raglearn-redpanda:9092
-      MINIO_NOTIFY_KAFKA_TOPIC_ingest: ${INGEST_TOPIC:-raglearn-ingest}
-    ports: ["9000:9000", "9001:9001"]
+      MINIO_NOTIFY_KAFKA_BROKERS_ingest: finrag-redpanda:9092
+      MINIO_NOTIFY_KAFKA_TOPIC_ingest: ${INGEST_TOPIC:-finrag-ingest}
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     volumes: [minio-data:/data]
     depends_on:
-      raglearn-redpanda: {condition: service_healthy}
-    networks: [raglearn-net]
+      finrag-redpanda: {condition: service_healthy}
+    networks: [finrag-net]
     restart: unless-stopped
 
   # One-shot: creates the filings bucket and binds its upload events to Redpanda,
   # then exits. Idempotent, so it runs harmlessly on every `up`.
-  raglearn-minio-init:
+  finrag-minio-init:
     image: minio/mc:latest
-    container_name: raglearn-minio-init
+    container_name: finrag-minio-init
     entrypoint: ["sh", "/init.sh"]
     environment:
-      MINIO_ENDPOINT: http://raglearn-minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-raglearn}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-raglearn-secret}
+      MINIO_ENDPOINT: http://finrag-minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-finrag}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-finrag-secret}
       INGEST_BUCKET: ${INGEST_BUCKET:-filings}
     volumes: ["./minio/init.sh:/init.sh:ro"]
     depends_on:
-      raglearn-minio: {condition: service_started}
-    networks: [raglearn-net]
+      finrag-minio: {condition: service_started}
+    networks: [finrag-net]
     restart: "no"
 
-  raglearn-api:
+  # A fresh named volume is root-owned, but the API/consumer run as uid 10001 and
+  # must write the Hugging Face cache into it. Chown it once before they start
+  # (Docker can't seed ownership from an empty image dir).
+  finrag-cache-init:
+    image: busybox:latest
+    container_name: finrag-cache-init
+    command: ["sh", "-c", "chown -R 10001:10001 /cache"]
+    volumes: [hf-cache:/cache]
+    networks: [finrag-net]
+    restart: "no"
+
+  finrag-api:
     build:
       context: ..
       dockerfile: infra/docker/Dockerfile.api
-    container_name: raglearn-api
-    environment:
-      RAGLEARN_ENV: ${RAGLEARN_ENV:-dev}
-      RAGLEARN_CONFIG_DIR: /app/config
-      RAGLEARN_QDRANT_URL: http://raglearn-qdrant:6333
-      RAGLEARN_POSTGRES_DSN: postgresql://${POSTGRES_USER:-raglearn}:${POSTGRES_PASSWORD:-raglearn}@raglearn-postgres:5432/${POSTGRES_DB:-raglearn}
-      RAGLEARN_REDIS_URL: redis://raglearn-redis:6379/0
-      RAGLEARN_OLLAMA_URL: http://raglearn-ollama:11434
-      RAGLEARN_MINIO_ENDPOINT: http://raglearn-minio:9000
-      RAGLEARN_TIKA_URL: http://raglearn-tika:9998
-    ports: ["8000:8000"]
-    volumes: [duckdb-data:/app/data]
-    depends_on:
-      raglearn-postgres: {condition: service_healthy}
-      raglearn-redis: {condition: service_healthy}
-      raglearn-qdrant: {condition: service_started}
-      raglearn-ollama: {condition: service_started}
-      raglearn-minio: {condition: service_started}
-      raglearn-tika: {condition: service_started}
-    networks: [raglearn-net]
+    # Build once under this name; the consumer reuses the same image (no second
+    # build) so the two can never drift apart.
+    image: finrag-app
+    container_name: finrag-api
+    # Shared by the API and the consumer — same image, same service URLs. Facts
+    # live in Postgres (concurrent reader+writer), so the API and consumer run at
+    # the same time without contention.
+    environment: &backend-env
+      FINRAG_ENV: ${FINRAG_ENV:-dev}
+      FINRAG_CONFIG_DIR: /app/config
+      FINRAG_QDRANT_URL: http://finrag-qdrant:6333
+      FINRAG_POSTGRES_DSN: postgresql://${POSTGRES_USER:-finrag}:${POSTGRES_PASSWORD:-finrag}@finrag-postgres:5432/${POSTGRES_DB:-finrag}
+      FINRAG_REDIS_URL: redis://finrag-redis:6379/0
+      FINRAG_OLLAMA_URL: http://finrag-ollama:11434
+      FINRAG_MINIO_ENDPOINT: http://finrag-minio:9000
+      FINRAG_TIKA_URL: http://finrag-tika:9998
+      # In-network Kafka listener the consumer reads.
+      FINRAG_REDPANDA_BROKER: finrag-redpanda:9092
+      # The dev stack runs Redis, so fan traces out to it: powers the live chat
+      # trace and the live ingestion monitor DAG (both gate on the redis exporter).
+      FINRAG_OBSERVABILITY_EXPORTERS: redis
+    ports: ["127.0.0.1:8000:8000"]
+    # Shared Hugging Face cache: bge-m3 + reranker weights download once and are
+    # reused by the API and consumer, and survive restarts (so a slow first-time
+    # download can't blow the consumer's poll interval on every container).
+    volumes: [hf-cache:/home/app/.cache/huggingface]
+    depends_on: &backend-deps
+      finrag-postgres: {condition: service_healthy}
+      finrag-redis: {condition: service_healthy}
+      finrag-qdrant: {condition: service_started}
+      finrag-ollama: {condition: service_started}
+      finrag-minio: {condition: service_started}
+      finrag-tika: {condition: service_started}
+      finrag-cache-init: {condition: service_completed_successfully}
+    networks: [finrag-net]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # Event-driven ingestion worker: drains the Redpanda topic and runs each dropped
+  # file through the pipeline (parse → chunk → embed → index / extract → facts).
+  # Same image as the API; a long-lived service so UI uploads flow end to end with
+  # no manual trigger. Needs the broker as well as the API's stores/services.
+  finrag-consumer:
+    image: finrag-app  # reuse the API image (built by the finrag-api service)
+    container_name: finrag-consumer
+    command: ["python", "-m", "finrag.ingestion.consumer"]
+    environment: *backend-env
+    volumes: [hf-cache:/home/app/.cache/huggingface]
+    depends_on:
+      <<: *backend-deps
+      finrag-redpanda: {condition: service_healthy}
+    networks: [finrag-net]
     restart: unless-stopped
 
 volumes:
@@ -155,8 +197,8 @@ volumes:
   redis-data: {}
   minio-data: {}
   redpanda-data: {}
-  duckdb-data: {}
+  hf-cache: {}
 
 networks:
-  raglearn-net:
+  finrag-net:
     driver: bridge

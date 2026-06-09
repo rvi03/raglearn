@@ -6,7 +6,7 @@ deterministic without loading a tokenizer.
 
 from __future__ import annotations
 
-from raglearn.core.types import (
+from finrag.core.types import (
     BlockKind,
     ChunkType,
     DocumentMetadata,
@@ -15,8 +15,8 @@ from raglearn.core.types import (
     StructureBlock,
     StructureSection,
 )
-from raglearn.ingestion.chunking.context import context_prefix, contextualize
-from raglearn.ingestion.chunking.structure import StructureChunker
+from finrag.ingestion.chunking.context import context_prefix, contextualize
+from finrag.ingestion.chunking.structure import StructureChunker
 
 
 def char_tokens(text: str) -> int:

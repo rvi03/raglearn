@@ -6,8 +6,8 @@ plain-text fallback -- no sec-parser, no Docling, no real data.
 
 from __future__ import annotations
 
-from raglearn.core.types import DetectedFormat, ParsedStructure, RawDocument
-from raglearn.ingestion.chunking.parse import StructureParser
+from finrag.core.types import DetectedFormat, ParsedStructure, RawDocument
+from finrag.ingestion.chunking.parse import StructureParser
 
 
 class _StubParser:

@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import pytest
 
-from raglearn.core.errors import IngestionError
-from raglearn.core.types import FactOrigin, Market, RawDocument
-from raglearn.ingestion.bundle import BundleAssembler
-from raglearn.ingestion.xbrl_extract import (
+from finrag.core.errors import IngestionError
+from finrag.core.types import FactOrigin, Market, RawDocument
+from finrag.ingestion.bundle import BundleAssembler
+from finrag.ingestion.xbrl_extract import (
     ArelleXbrlExtractor,
     _build_metadata,
     _dimensions,
@@ -61,6 +61,53 @@ _INSTANCE_TAIL = b"</xbrli:xbrl>"
 _MOCK_INSTANCE = _INSTANCE_HEAD + _FACT + _INSTANCE_TAIL
 # Same fact tagged twice — exercises dedup (same concept/period/unit/dimension).
 _MOCK_INSTANCE_DUP = _INSTANCE_HEAD + _FACT + _FACT + _INSTANCE_TAIL
+
+# --- a mock DEI taxonomy + instance (closes the hermetic DEI gap) --------------
+# DEI concepts in a custom namespace whose URI carries the "/dei/" marker the
+# extractor keys on; string items resolve against the core XBRL schema, so real
+# Arelle reads them with no SEC dei taxonomy and no network. The instance's entry
+# schema IS this dei schema (no us-gaap needed); its stem matches so the bundle
+# completeness gate (`{stem}.xsd`) is satisfied.
+_DEI_XSD = b"""<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:dei="http://example.com/dei/2024"
+            targetNamespace="http://example.com/dei/2024" elementFormDefault="qualified">
+  <xsd:import namespace="http://www.xbrl.org/2003/instance"
+              schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+  <xsd:element name="EntityRegistrantName" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+  <xsd:element name="EntityCentralIndexKey" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+  <xsd:element name="TradingSymbol" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+  <xsd:element name="DocumentType" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+  <xsd:element name="DocumentFiscalYearFocus" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+  <xsd:element name="DocumentFiscalPeriodFocus" type="xbrli:stringItemType"
+               substitutionGroup="xbrli:item" xbrli:periodType="duration" nillable="true"/>
+</xsd:schema>
+"""
+
+_DEI_INSTANCE = b"""<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
+            xmlns:link="http://www.xbrl.org/2003/linkbase"
+            xmlns:xlink="http://www.w3.org/1999/xlink"
+            xmlns:dei="http://example.com/dei/2024">
+  <link:schemaRef xlink:type="simple" xlink:href="dei.xsd"/>
+  <xbrli:context id="c1">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com">MOCK</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:startDate>2024-01-01</xbrli:startDate><xbrli:endDate>2024-12-31</xbrli:endDate></xbrli:period>
+  </xbrli:context>
+  <dei:EntityRegistrantName contextRef="c1">Mock Corp</dei:EntityRegistrantName>
+  <dei:EntityCentralIndexKey contextRef="c1">1234567</dei:EntityCentralIndexKey>
+  <dei:TradingSymbol contextRef="c1">MOCK</dei:TradingSymbol>
+  <dei:DocumentType contextRef="c1">10-K</dei:DocumentType>
+  <dei:DocumentFiscalYearFocus contextRef="c1">2024</dei:DocumentFiscalYearFocus>
+  <dei:DocumentFiscalPeriodFocus contextRef="c1">FY</dei:DocumentFiscalPeriodFocus>
+</xbrli:xbrl>
+"""
 
 _PREFIX = "us/mock/0000-00-000-xbrl/"
 
@@ -256,6 +303,42 @@ def test_to_int_parses_a_year_or_returns_none() -> None:
     assert _to_int("2024") == 2024
     assert _to_int(None) is None
     assert _to_int("not-a-year") is None
+
+
+# --- DEI iteration through REAL Arelle (hermetic, via the mock dei taxonomy) ---
+
+
+def _dei_store() -> _DictStore:
+    return _DictStore({_PREFIX + "dei.xml": _DEI_INSTANCE, _PREFIX + "dei.xsd": _DEI_XSD})
+
+
+def test_extractor_reads_real_dei_into_metadata() -> None:
+    extraction = ArelleXbrlExtractor(BundleAssembler(_dei_store())).extract(_doc("dei.xml"))  # type: ignore[arg-type]
+
+    assert extraction is not None
+    assert extraction.collection.collection_id == "us-cik-1234567"
+    assert extraction.collection.company == "Mock Corp"
+    assert extraction.collection.cik == "1234567"
+    assert extraction.collection.ticker == "MOCK"
+    assert extraction.filing.filing_type == "10-K"
+    assert extraction.filing.fiscal_year == 2024
+    assert extraction.filing.fiscal_period == "FY"
+
+
+def test_us_identity_from_real_dei_extraction() -> None:
+    from finrag.core.types import NumericAuthority
+    from finrag.ingestion.identity.us import identity_from_extraction
+
+    doc = _doc("dei.xml")
+    extraction = ArelleXbrlExtractor(BundleAssembler(_dei_store())).extract(doc)  # type: ignore[arg-type]
+    assert extraction is not None
+
+    ident = identity_from_extraction(extraction, doc)
+    assert ident.market is Market.US
+    assert ident.doc_type == "10-K"
+    assert ident.cik == "1234567"
+    assert ident.numeric_authority is NumericAuthority.AUTHORITATIVE
+    assert "us-cik-1234567" in ident.logical_key
 
 
 # --- dimension rendering (the fact_id key must be total over both kinds) -------

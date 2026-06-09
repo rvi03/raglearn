@@ -1,4 +1,4 @@
-# raglearn backend
+# finrag backend
 
 Agentic RAG over financial filings: exact figures from a structured store,
 narrative from hybrid vector retrieval, behind one agentic router.
@@ -6,7 +6,7 @@ narrative from hybrid vector retrieval, behind one agentic router.
 ## Layout
 
 ```
-src/raglearn/
+src/finrag/
   core/          config, registry, interfaces, domain types, logging, errors
   ingestion/     connectors, intake, parsers, chunkers, embedders
   retrieval/     transforms, router, retrievers, reranker, fusion
@@ -42,4 +42,4 @@ make test        # pytest
 ```
 
 Requires [uv](https://docs.astral.sh/uv/). Config is read from `../config`
-(override with `RAGLEARN_CONFIG_DIR`); the profile is `RAGLEARN_ENV` (`dev`).
+(override with `FINRAG_CONFIG_DIR`); the profile is `FINRAG_ENV` (`dev`).

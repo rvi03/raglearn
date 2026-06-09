@@ -7,8 +7,8 @@ without needing network access or real filings.
 
 from __future__ import annotations
 
-from raglearn.core.types import BlockKind
-from raglearn.ingestion.chunking.assemble import ParsedItem, assemble_sections
+from finrag.core.types import BlockKind
+from finrag.ingestion.chunking.assemble import ParsedItem, assemble_sections
 
 
 def test_titles_open_sections_and_content_fills_them() -> None:

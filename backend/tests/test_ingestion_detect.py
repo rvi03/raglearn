@@ -5,9 +5,9 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from raglearn.core.errors import IngestionError
-from raglearn.core.types import DetectedFormat
-from raglearn.ingestion.detect import TikaFormatDetector
+from finrag.core.errors import IngestionError
+from finrag.core.types import DetectedFormat
+from finrag.ingestion.detect import TikaFormatDetector
 
 
 def _detector_with_handler(handler: httpx.MockTransport) -> TikaFormatDetector:
