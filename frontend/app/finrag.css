@@ -17,6 +17,7 @@
   --accent: #b6c24f;
   --accent-ink: #10120a;
   --accent-text: #b6c24f;
+  --role-label: #8a97a5; /* steel blue-grey — shared by YOU + ASSISTANT labels */
   --up: #74af84;
   --down: #c5736c;
   --hl: rgba(182, 194, 79, 0.18);
@@ -37,14 +38,15 @@
   --text: #1b1c1a;
   --muted: #65665f;
   --faint: #9b9c92;
-  --accent: #7e8a2c;
+  --accent: #6c7a12;
   --accent-ink: #f7f6f2;
-  /* saturated green-olive so the accent-text pattern ("New analysis" etc.) stays
-     distinct from the near-black body text on cream — not just darker, which blended in */
-  --accent-text: #4f6d0b;
+  /* deeper olive — saturated enough to read as the accent on cream, dark enough to
+     stay distinct from the near-black body text (the "Ask" label, citations, etc.) */
+  --accent-text: #44590a;
+  --role-label: #3f4b58; /* steel blue-grey, darkened for the cream background */
   --up: #3f7d50;
   --down: #a8473c;
-  --hl: rgba(126, 138, 44, 0.18);
+  --hl: rgba(108, 122, 18, 0.18);
 }
 
 .cc * {
@@ -405,19 +407,17 @@
   gap: 14px;
 }
 
-/* role labels anchor the conversation: ASSISTANT a bright header, YOU the accent
-   marker — both clearly louder than the muted internal annotations below. */
+/* role labels anchor the conversation: YOU and ASSISTANT share one neutral header
+   color (the accent is reserved for citations/active state, so it can't carry this
+   distinction). They read apart by their label text and the message typography
+   below. Theme-scoped --text keeps this correct in both light and dark. */
 .cc .role {
   font-family: var(--font-mono), monospace;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--text);
-}
-
-.cc .role.me {
-  color: var(--accent-text);
+  color: var(--role-label);
 }
 
 .cc .umsg {
@@ -744,28 +744,6 @@
   background: var(--accent);
 }
 
-/* follow-up chips */
-.cc .follows {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 18px;
-}
-
-.cc .follow {
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  color: var(--muted);
-  border: 1px solid var(--hair);
-  padding: 8px 12px;
-  text-align: left;
-}
-
-.cc .follow:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-
 /* composer */
 .cc .composerwrap {
   border-top: 1px solid var(--hair);
@@ -860,34 +838,44 @@
   line-height: 1.6;
 }
 
-.cc .examples {
+/* chats — full conversation history (the rail shows only the recent five) */
+.cc .chatlist {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  margin-top: 28px;
-  border-top: 1px solid var(--hair);
-  text-align: left;
+  max-width: 760px;
+  margin: 8px auto 0;
+  padding: 0 24px;
 }
 
-.cc .example {
+.cc .chatrow {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 15px 4px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 4px;
   border-bottom: 1px solid var(--hair);
+  text-align: left;
   font-size: 14px;
   color: var(--text);
 }
 
-.cc .example:hover {
+.cc .chatrow:hover {
   color: var(--accent-text);
 }
 
-.cc .example .en {
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  color: var(--faint);
+.cc .chatrow-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cc .chatrow-time {
   flex: none;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 
 /* citation drawer (slide-over) */

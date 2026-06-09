@@ -76,7 +76,8 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
   const router = useRouter();
   const { theme, toggle } = useTheme();
   const { sessions, newSessionId, renameSession, deleteSession } = useSessions();
-  const isChat = pathname.startsWith("/chat");
+  // "Chats" (history) covers both the full-history page and any open thread.
+  const isChats = pathname.startsWith("/chats") || pathname.startsWith("/chat/");
   const isDocs = pathname.startsWith("/documents");
   const isMonitor = pathname.startsWith("/monitor");
   const isSettings = pathname.startsWith("/settings");
@@ -84,10 +85,6 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
   // Start a fresh conversation: a new id routes to a blank thread; it persists
   // (and joins Recent) once its first message lands.
   const newChat = (): void => router.push(`/chat/${newSessionId()}`);
-
-  // The Chat nav resumes the most-recent conversation; with none yet, /chat
-  // redirects to a fresh one. (New analysis always starts fresh.)
-  const chatHref = sessions[0] ? `/chat/${sessions[0].id}` : "/chat";
 
   const removeConversation = (id: string): void => {
     void deleteSession(id);
@@ -127,7 +124,7 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
             </svg>
             Monitor
           </Link>
-          <Link href={chatHref} className={isChat ? "on" : undefined}>
+          <Link href="/chats" className={isChats ? "on" : undefined}>
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -137,7 +134,7 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
             >
               <path d="M4 4h16v12H8l-4 4zM9 9h6M9 12h4" />
             </svg>
-            Chat
+            Chats
           </Link>
         </nav>
 
@@ -151,7 +148,7 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
           >
             <path d="M12 5v14M5 12h14" />
           </svg>
-          New analysis
+          Ask
         </button>
 
         <div className="railsec">
@@ -159,18 +156,20 @@ export function AppShell({ children }: { children: ReactNode }): ReactNode {
         </div>
         <div className="convs">
           {sessions.length === 0 ? (
-            <div className="convempty">No analyses yet</div>
+            <div className="convempty">No chats yet</div>
           ) : (
-            sessions.map((s) => (
-              <ConvItem
-                key={s.id}
-                session={s}
-                active={pathname === `/chat/${s.id}`}
-                onOpen={() => router.push(`/chat/${s.id}`)}
-                onRename={(title) => void renameSession(s.id, title)}
-                onDelete={() => removeConversation(s.id)}
-              />
-            ))
+            sessions
+              .slice(0, 5)
+              .map((s) => (
+                <ConvItem
+                  key={s.id}
+                  session={s}
+                  active={pathname === `/chat/${s.id}`}
+                  onOpen={() => router.push(`/chat/${s.id}`)}
+                  onRename={(title) => void renameSession(s.id, title)}
+                  onDelete={() => removeConversation(s.id)}
+                />
+              ))
           )}
         </div>
 

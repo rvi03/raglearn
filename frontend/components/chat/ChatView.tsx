@@ -1,7 +1,6 @@
 "use client";
 
 import { useChat } from "@/hooks/useChat";
-import { EXAMPLE_PROMPTS, FOLLOW_UPS } from "@/lib/chat-prompts";
 import type { Citation, Source } from "@/lib/chat-types";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Composer } from "./Composer";
@@ -33,7 +32,6 @@ export function ChatView({ sessionId }: { sessionId: string }): ReactNode {
   );
 
   const isEmpty = messages.length === 0;
-  const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
 
   return (
     <>
@@ -58,15 +56,7 @@ export function ChatView({ sessionId }: { sessionId: string }): ReactNode {
           <div className="empty">
             <div className="ekick">finrag · assistant</div>
             <h2>Ask about a filing</h2>
-            <p>Answers are grounded in indexed passages, with inline citations you can open.</p>
-            <div className="examples">
-              {EXAMPLE_PROMPTS.map((p, i) => (
-                <button key={p} type="button" className="example" onClick={() => sendMessage(p)}>
-                  <span className="en">{String(i + 1).padStart(2, "0")}</span>
-                  {p}
-                </button>
-              ))}
-            </div>
+            <p>Ask, analyze, and understand financial data.</p>
           </div>
         ) : (
           <div className="thread">
@@ -75,10 +65,7 @@ export function ChatView({ sessionId }: { sessionId: string }): ReactNode {
                 key={m.id}
                 message={m}
                 activeCite={viewer?.citation?.id ?? null}
-                isLast={m.id === lastId && m.role === "assistant"}
-                followUps={FOLLOW_UPS}
                 onOpen={openFor(m.sources, m.citations)}
-                onFollow={sendMessage}
               />
             ))}
             <div ref={bottomRef} />

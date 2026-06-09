@@ -11,21 +11,11 @@ import { SourcesList } from "./SourcesList";
 type Props = {
   message: ChatMessage;
   activeCite: number | null;
-  isLast: boolean;
-  followUps: string[];
   onOpen: (id: number) => void;
-  onFollow: (text: string) => void;
 };
 
 /** One thread turn — user prompt or the assembled assistant answer. */
-export function Turn({
-  message,
-  activeCite,
-  isLast,
-  followUps,
-  onOpen,
-  onFollow,
-}: Props): ReactNode {
+export function Turn({ message, activeCite, onOpen }: Props): ReactNode {
   if (message.role === "user") {
     return (
       <div className="turn">
@@ -53,15 +43,6 @@ export function Turn({
           <SafetyNote answered={message.answered} redacted={message.redacted} />
           <GroundingBadge confidence={message.groundingConfidence} />
           <SourcesList sources={message.sources} citations={message.citations} onOpen={onOpen} />
-          {isLast && followUps.length > 0 && (
-            <div className="follows">
-              {followUps.map((f) => (
-                <button key={f} type="button" className="follow" onClick={() => onFollow(f)}>
-                  {f}
-                </button>
-              ))}
-            </div>
-          )}
         </>
       )}
     </div>
